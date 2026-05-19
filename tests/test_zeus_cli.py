@@ -63,3 +63,37 @@ def test_windows_installer_targets_project_zeus_and_separate_localappdata_home()
     assert "hermes-agent.git" not in script
     assert "NousResearch" not in script
     assert "zeus" in script
+
+
+def test_phase3_windows_installer_has_client_polish_surfaces():
+    script = Path("scripts/install-zeus.ps1").read_text(encoding="utf-8")
+
+    assert "[switch]$Update" in script
+    assert "[switch]$Repair" in script
+    assert "[switch]$Uninstall" in script
+    assert "Start-Transcript" in script
+    assert "ZeusInstallLog" in script
+    assert "New-ZeusDesktopShortcut" in script
+    assert "New-ZeusStartMenuShortcut" in script
+    assert "Install-ZeusUninstaller" in script
+    assert "Uninstall-Zeus" in script
+    assert "Repair-Zeus" in script
+    assert "Update-Zeus" in script
+    assert "Zeus.lnk" in script
+    assert "Uninstall Zeus.cmd" in script
+    assert "zeus-repair.cmd" in script
+    assert "zeus-update.cmd" in script
+    assert "Desktop" in script
+    assert "Start Menu" in script
+
+
+def test_phase3_installer_keeps_user_state_safe_during_repair_and_uninstall():
+    script = Path("scripts/install-zeus.ps1").read_text(encoding="utf-8")
+
+    assert "PreserveUserData" in script
+    assert "auth.json" in script
+    assert "config.yaml" in script
+    assert "sessions" in script
+    assert "memories" in script
+    assert "Remove-Item -Recurse -Force $InstallDir" in script
+    assert "Remove-Item -Recurse -Force $ZeusHome" not in script

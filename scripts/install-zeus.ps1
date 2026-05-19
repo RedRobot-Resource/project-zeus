@@ -9,11 +9,18 @@
 #
 # Or download and run:
 #   .\install-zeus.ps1 -SkipSetup
+#   .\install-zeus.ps1 -Update
+#   .\install-zeus.ps1 -Repair
+#   .\install-zeus.ps1 -Uninstall
 # ============================================================================
 
 param(
     [switch]$NoVenv,
     [switch]$SkipSetup,
+    [switch]$Update,
+    [switch]$Repair,
+    [switch]$Uninstall,
+    [switch]$PreserveUserData = $true,
     [string]$Branch = "main",
     [string]$ZeusHome = "$env:LOCALAPPDATA\Zeus",
     [string]$InstallDir = "$env:LOCALAPPDATA\Zeus\project-zeus"
@@ -23,6 +30,14 @@ $ErrorActionPreference = "Stop"
 
 $RepoUrlHttps = "https://github.com/RedRobot-Resource/project-zeus.git"
 $PythonVersion = "3.11"
+$ZeusInstallLogDir = Join-Path $ZeusHome "logs"
+$ZeusInstallLog = Join-Path $ZeusInstallLogDir ("install-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+$ZeusBinDir = Join-Path $ZeusHome "bin"
+$ZeusShortcutName = "Zeus.lnk"
+$ZeusUninstallName = "Uninstall Zeus.cmd"
+$ZeusRepairName = "zeus-repair.cmd"
+$ZeusUpdateName = "zeus-update.cmd"
+$UserStatePaths = @("auth.json", "config.yaml", ".env", "sessions", "memories", "state.db", "logs", "workspace", "home")
 
 function Write-Banner {
     Write-Host ""
@@ -39,6 +54,25 @@ function Write-Info { param([string]$Message) Write-Host "→ $Message" -Foregro
 function Write-Success { param([string]$Message) Write-Host "✓ $Message" -ForegroundColor Green }
 function Write-Warn { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
 function Write-Err { param([string]$Message) Write-Host "✗ $Message" -ForegroundColor Red }
+
+function Start-ZeusInstallLog {
+    New-Item -ItemType Directory -Force -Path $ZeusInstallLogDir | Out-Null
+    try {
+        Start-Transcript -Path $ZeusInstallLog -Append | Out-Null
+        Write-Info "Install log: $ZeusInstallLog"
+    } catch {
+        Write-Warn "Could not start install transcript: $_"
+    }
+}
+
+function Stop-ZeusInstallLog {
+    try { Stop-Transcript | Out-Null } catch { }
+}
+
+function Get-ZeusPython {
+    if ($NoVenv) { return "python" }
+    return Join-Path $InstallDir ".venv\Scripts\python.exe"
+}
 
 function Install-Uv {
     Write-Info "Checking for uv package manager..."
@@ -112,7 +146,7 @@ function Install-ZeusPackage {
         } else {
             Write-Info "Creating Zeus virtual environment..."
             & $UvCmd venv --python $PythonVersion .venv
-            $python = Join-Path $InstallDir ".venv\Scripts\python.exe"
+            $python = Get-ZeusPython
             & $UvCmd pip install --python $python -e .
         }
     } finally {
@@ -121,41 +155,168 @@ function Install-ZeusPackage {
 }
 
 function New-ZeusCommandShim {
-    $binDir = "$env:LOCALAPPDATA\Microsoft\WindowsApps"
-    if (-not (Test-Path $binDir)) {
-        $binDir = "$ZeusHome\bin"
-        New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-        Write-Warn "Add this directory to PATH if needed: $binDir"
-    }
-
-    $cmdPath = Join-Path $binDir "zeus.cmd"
-    $python = if ($NoVenv) { "python" } else { Join-Path $InstallDir ".venv\Scripts\python.exe" }
+    New-Item -ItemType Directory -Force -Path $ZeusBinDir | Out-Null
+    $cmdPath = Join-Path $ZeusBinDir "zeus.cmd"
+    $python = Get-ZeusPython
     $shim = "@echo off`r`nset ZEUS_HOME=$ZeusHome`r`nset HERMES_HOME=$ZeusHome`r`n`"$python`" -m zeus_cli %*`r`n"
     Set-Content -Path $cmdPath -Value $shim -Encoding ASCII
     Write-Success "Created zeus command shim: $cmdPath"
+
+    $windowsApps = "$env:LOCALAPPDATA\Microsoft\WindowsApps"
+    if (Test-Path $windowsApps) {
+        $publicCmd = Join-Path $windowsApps "zeus.cmd"
+        Set-Content -Path $publicCmd -Value $shim -Encoding ASCII
+        Write-Success "Created PATH command shim: $publicCmd"
+    } else {
+        Write-Warn "Add this directory to PATH if needed: $ZeusBinDir"
+    }
+}
+
+function New-ZeusDesktopShortcut {
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    if (-not $desktop) { return }
+    $target = Join-Path $ZeusBinDir "zeus.cmd"
+    $shortcutPath = Join-Path $desktop $ZeusShortcutName
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $target
+    $shortcut.WorkingDirectory = $ZeusHome
+    $shortcut.Description = "Launch Zeus by Red Robot Resource"
+    $shortcut.Save()
+    Write-Success "Created Desktop shortcut: $shortcutPath"
+}
+
+function New-ZeusStartMenuShortcut {
+    $programs = [Environment]::GetFolderPath("Programs")
+    if (-not $programs) { return }
+    $folder = Join-Path $programs "Zeus"
+    New-Item -ItemType Directory -Force -Path $folder | Out-Null
+
+    $target = Join-Path $ZeusBinDir "zeus.cmd"
+    $shortcutPath = Join-Path $folder $ZeusShortcutName
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $target
+    $shortcut.WorkingDirectory = $ZeusHome
+    $shortcut.Description = "Launch Zeus by Red Robot Resource"
+    $shortcut.Save()
+
+    Set-Content -Path (Join-Path $folder $ZeusUninstallName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Uninstall`r`n" -Encoding ASCII
+    Set-Content -Path (Join-Path $folder $ZeusRepairName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Repair -SkipSetup`r`n" -Encoding ASCII
+    Set-Content -Path (Join-Path $folder $ZeusUpdateName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Update -SkipSetup`r`n" -Encoding ASCII
+    Write-Success "Created Start Menu shortcuts: $folder"
+}
+
+function Install-ZeusUninstaller {
+    New-Item -ItemType Directory -Force -Path $ZeusBinDir | Out-Null
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusUninstallName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Uninstall`r`n" -Encoding ASCII
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusRepairName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Repair -SkipSetup`r`n" -Encoding ASCII
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusUpdateName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Update -SkipSetup`r`n" -Encoding ASCII
+    Write-Success "Created repair, update, and uninstall commands in $ZeusBinDir"
 }
 
 function Initialize-ZeusRuntime {
     $env:ZEUS_HOME = $ZeusHome
     $env:HERMES_HOME = $ZeusHome
-    $python = if ($NoVenv) { "python" } else { Join-Path $InstallDir ".venv\Scripts\python.exe" }
+    $python = Get-ZeusPython
     & $python -m zeus_cli --help | Out-Null
     Write-Success "Initialized independent Zeus home: $ZeusHome"
 }
 
-Write-Banner
-Install-Uv
-Install-GitIfNeeded
-Install-ZeusSource
-Install-ZeusPackage
-New-ZeusCommandShim
-Initialize-ZeusRuntime
-
-if (-not $SkipSetup) {
-    Write-Info "Launching Zeus setup..."
-    $env:ZEUS_HOME = $ZeusHome
-    $env:HERMES_HOME = $ZeusHome
-    zeus setup
+function Update-Zeus {
+    Write-Info "Updating Zeus client..."
+    Install-Uv
+    Install-GitIfNeeded
+    Install-ZeusSource
+    Install-ZeusPackage
+    New-ZeusCommandShim
+    New-ZeusDesktopShortcut
+    New-ZeusStartMenuShortcut
+    Install-ZeusUninstaller
+    Initialize-ZeusRuntime
+    Write-Success "Zeus update complete."
 }
 
-Write-Success "Zeus is installed. Open a new PowerShell window and run: zeus"
+function Repair-Zeus {
+    Write-Info "Repairing Zeus while preserving user data: $PreserveUserData"
+    foreach ($statePath in $UserStatePaths) {
+        $full = Join-Path $ZeusHome $statePath
+        if (Test-Path $full) { Write-Info "Preserving user state: $statePath" }
+    }
+    Install-Uv
+    Install-GitIfNeeded
+    Install-ZeusSource
+    Install-ZeusPackage
+    New-ZeusCommandShim
+    New-ZeusDesktopShortcut
+    New-ZeusStartMenuShortcut
+    Install-ZeusUninstaller
+    Initialize-ZeusRuntime
+    Write-Success "Zeus repair complete."
+}
+
+function Uninstall-Zeus {
+    Write-Warn "Uninstalling Zeus application files. PreserveUserData=$PreserveUserData"
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    if ($desktop) { Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $desktop $ZeusShortcutName) }
+
+    $programs = [Environment]::GetFolderPath("Programs")
+    if ($programs) { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $programs "Zeus") }
+
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps" "zeus.cmd")
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir "zeus.cmd")
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusUninstallName)
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusRepairName)
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusUpdateName)
+
+    if (Test-Path $InstallDir) {
+        Remove-Item -Recurse -Force $InstallDir
+    }
+
+    if ($PreserveUserData) {
+        Write-Success "Removed Zeus app files. User data remains at $ZeusHome"
+    } else {
+        foreach ($statePath in $UserStatePaths) {
+            $full = Join-Path $ZeusHome $statePath
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $full
+        }
+        Write-Success "Removed Zeus app files and selected user state files from $ZeusHome"
+    }
+}
+
+function Install-Zeus {
+    Install-Uv
+    Install-GitIfNeeded
+    Install-ZeusSource
+    Install-ZeusPackage
+    New-ZeusCommandShim
+    New-ZeusDesktopShortcut
+    New-ZeusStartMenuShortcut
+    Install-ZeusUninstaller
+    Initialize-ZeusRuntime
+
+    if (-not $SkipSetup) {
+        Write-Info "Launching Zeus setup..."
+        $env:ZEUS_HOME = $ZeusHome
+        $env:HERMES_HOME = $ZeusHome
+        zeus setup
+    }
+
+    Write-Success "Zeus is installed. Open a new PowerShell window and run: zeus"
+}
+
+try {
+    Write-Banner
+    Start-ZeusInstallLog
+    if ($Uninstall) {
+        Uninstall-Zeus
+    } elseif ($Repair) {
+        Repair-Zeus
+    } elseif ($Update) {
+        Update-Zeus
+    } else {
+        Install-Zeus
+    }
+} finally {
+    Stop-ZeusInstallLog
+}
