@@ -92,9 +92,15 @@ def show_status(args):
     show_all = getattr(args, 'all', False)
     deep = getattr(args, 'deep', False)
 
+    try:
+        from hermes_cli.branding import get_runtime_branding
+        status_title = get_runtime_branding().status_title
+    except Exception:
+        status_title = "Hermes Agent Status"
+
     print()
     print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│                 ⚕ Hermes Agent Status                  │", Colors.CYAN))
+    print(color(f"│{status_title:^57}│", Colors.CYAN))
     print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
 
     # =========================================================================

@@ -97,3 +97,45 @@ def test_phase3_installer_keeps_user_state_safe_during_repair_and_uninstall():
     assert "memories" in script
     assert "Remove-Item -Recurse -Force $InstallDir" in script
     assert "Remove-Item -Recurse -Force $ZeusHome" not in script
+
+
+def test_phase4_zeus_runtime_overrides_visible_client_branding(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+    from hermes_cli.branding import get_runtime_branding
+
+    zeus_home = tmp_path / "Zeus"
+    monkeypatch.setenv("ZEUS_HOME", str(zeus_home))
+    monkeypatch.delenv("HERMES_RUNTIME_BRAND", raising=False)
+
+    ensure_zeus_runtime()
+    brand = get_runtime_branding()
+
+    assert brand.product_name == "Zeus"
+    assert brand.vendor_name == "Red Robot Resource"
+    assert brand.status_title == "Zeus Status"
+    assert brand.cli_status_title == "Zeus CLI Status"
+    assert brand.version_product == "Zeus Client"
+    assert brand.compact_tagline == "AI Client Framework"
+    assert "Hermes" not in brand.user_facing_intro
+    assert "Nous" not in brand.user_facing_intro
+
+
+def test_phase4_zeus_version_and_compact_banner_hide_hermes_and_nous(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+    from hermes_cli.banner import format_banner_version_label
+    from hermes_cli.skin_engine import set_active_skin
+    from cli import _build_compact_banner
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    monkeypatch.delenv("HERMES_RUNTIME_BRAND", raising=False)
+    ensure_zeus_runtime()
+    set_active_skin("zeus")
+
+    version_label = format_banner_version_label()
+    compact = _build_compact_banner()
+
+    assert version_label.startswith("Zeus Client v")
+    assert "Hermes Agent" not in version_label
+    assert "Nous Research" not in compact
+    assert "Zeus" in compact
+    assert "Red Robot Resource" in compact

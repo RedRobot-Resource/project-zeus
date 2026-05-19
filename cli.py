@@ -2353,19 +2353,29 @@ def _build_compact_banner() -> str:
     title_color = _skin.get_color("banner_title", "#FFBF00") if _skin else "#FFBF00"
     dim_color = _skin.get_color("banner_dim", "#B8860B") if _skin else "#B8860B"
 
+    try:
+        from hermes_cli.branding import get_runtime_branding
+        brand = get_runtime_branding()
+    except Exception:
+        brand = None
+
+    vendor_name = brand.vendor_name if brand else "Nous Research"
     if skin_name == "default":
-        line1 = "⚕ NOUS HERMES - AI Agent Framework"
-        tiny_line = "⚕ NOUS HERMES"
+        product = brand.product_name if brand else "⚕ NOUS HERMES"
+        tagline = brand.compact_tagline if brand else "AI Agent Framework"
+        line1 = f"{product} - {tagline} by {vendor_name}"
+        tiny_line = product
     else:
         agent_name = _skin.get_branding("agent_name", "Hermes Agent") if _skin else "Hermes Agent"
-        line1 = f"{agent_name} - AI Agent Framework"
+        tagline = brand.compact_tagline if brand else "AI Agent Framework"
+        line1 = f"{agent_name} - {tagline} by {vendor_name}"
         tiny_line = agent_name
 
     version_line = format_banner_version_label()
 
     w = min(shutil.get_terminal_size().columns - 2, 88)
     if w < 30:
-        return f"\n[{title_color}]{tiny_line}[/] [dim {dim_color}]- Nous Research[/]\n"
+        return f"\n[{title_color}]{tiny_line}[/] [dim {dim_color}]- {vendor_name}[/]\n"
 
     inner = w - 2  # inside the box border
     bar = "═" * w
@@ -5424,8 +5434,14 @@ class HermesCLI:
         model = getattr(self, "model", None) or "(unknown)"
         is_running = bool(getattr(self, "_agent_running", False))
 
+        try:
+            from hermes_cli.branding import get_runtime_branding
+            cli_status_title = get_runtime_branding().cli_status_title
+        except Exception:
+            cli_status_title = "Hermes CLI Status"
+
         lines = [
-            "Hermes CLI Status",
+            cli_status_title,
             "",
             f"Session ID: {self.session_id}",
             f"Path: {display_hermes_home()}",
