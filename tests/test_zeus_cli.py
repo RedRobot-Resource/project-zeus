@@ -1,0 +1,65 @@
+"""Tests for the Zeus-branded runtime launcher."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+
+
+def test_ensure_zeus_runtime_creates_independent_home_with_zeus_skin(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+
+    hermes_home = tmp_path / "hermes"
+    zeus_home = tmp_path / "Zeus"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setenv("ZEUS_HOME", str(zeus_home))
+
+    resolved = ensure_zeus_runtime()
+
+    assert resolved == zeus_home
+    assert Path(resolved).is_dir()
+    assert Path(resolved) != hermes_home
+    assert Path(resolved / "config.yaml").is_file()
+    config = yaml.safe_load((resolved / "config.yaml").read_text(encoding="utf-8"))
+    assert config["display"]["skin"] == "zeus"
+    assert config["branding"]["product_name"] == "Zeus"
+    assert config["branding"]["vendor"] == "Red Robot Resource"
+    assert config["profiles"]["independent_from"] == "Hermes Agent"
+    assert config["gateway"]["service_name"] == "zeus-gateway"
+    assert config["runtime"]["home_name"] == "Zeus"
+    assert config["runtime"]["windows_client"] is True
+    assert config["runtime"]["can_run_alongside_hermes"] is True
+    assert config["runtime"]["upstream_compatibility"] == "isolated-home"
+    assert Path(resolved / "SOUL.md").read_text(encoding="utf-8").startswith("# Zeus")
+
+
+def test_ensure_zeus_runtime_preserves_existing_user_config(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+
+    zeus_home = tmp_path / "Zeus"
+    zeus_home.mkdir()
+    (zeus_home / "config.yaml").write_text(
+        "model:\n  provider: openrouter\ndisplay:\n  skin: custom\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ZEUS_HOME", str(zeus_home))
+
+    ensure_zeus_runtime()
+
+    config = yaml.safe_load((zeus_home / "config.yaml").read_text(encoding="utf-8"))
+    assert config["model"]["provider"] == "openrouter"
+    assert config["display"]["skin"] == "custom"
+    assert config["branding"]["product_name"] == "Zeus"
+    assert config["runtime"]["can_run_alongside_hermes"] is True
+
+
+def test_windows_installer_targets_project_zeus_and_separate_localappdata_home():
+    script = Path("scripts/install-zeus.ps1").read_text(encoding="utf-8")
+
+    assert "RedRobot-Resource/project-zeus.git" in script
+    assert "$env:LOCALAPPDATA\\Zeus" in script
+    assert "Zeus Installer" in script
+    assert "hermes-agent.git" not in script
+    assert "NousResearch" not in script
+    assert "zeus" in script
