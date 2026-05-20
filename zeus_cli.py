@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 import yaml
 
@@ -141,9 +141,112 @@ def ensure_zeus_runtime() -> Path:
     return zeus_home
 
 
+def _check_file(path: Path, label: str) -> Dict[str, Any]:
+    return {"label": label, "ok": path.is_file(), "path": str(path)}
+
+
+def _check_dir(path: Path, label: str) -> Dict[str, Any]:
+    return {"label": label, "ok": path.is_dir(), "path": str(path)}
+
+
+def build_zeus_health_report(zeus_home: Path | None = None) -> Dict[str, Any]:
+    """Build a small Zeus-specific onboarding health report.
+
+    This intentionally avoids running the full Hermes doctor flow. It answers a
+    first-run Windows user's practical question: can Zeus start, where is its
+    isolated home, and what safe command should I run next?
+    """
+    home = (zeus_home or resolve_zeus_home()).expanduser().resolve()
+    config_path = home / "config.yaml"
+    guide_path = home / "ZEUS_START_HERE.md"
+    checks = [
+        _check_dir(home, "Expected Zeus home"),
+        _check_file(config_path, "Zeus config"),
+        _check_file(guide_path, "First-run guide"),
+    ]
+
+    config: Dict[str, Any] = {}
+    if config_path.exists():
+        try:
+            loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            if isinstance(loaded, dict):
+                config = loaded
+        except Exception as exc:
+            checks.append({"label": "Config readable", "ok": False, "detail": str(exc), "path": str(config_path)})
+
+    checks.append(
+        {
+            "label": "Zeus skin default",
+            "ok": config.get("display", {}).get("skin") == "zeus",
+            "path": str(config_path),
+        }
+    )
+    checks.append(
+        {
+            "label": "Independent runtime",
+            "ok": config.get("runtime", {}).get("can_run_alongside_hermes") is True,
+            "path": str(config_path),
+        }
+    )
+
+    ready = all(bool(item.get("ok")) for item in checks)
+    return {
+        "product": ZEUS_PRODUCT_NAME,
+        "vendor": ZEUS_VENDOR,
+        "home": str(home),
+        "ready": ready,
+        "checks": checks,
+        "next_steps": [
+            "Run: zeus setup",
+            "Run: zeus gateway install",
+            "Run: zeus-gateway-status.cmd",
+            "Repair: zeus-repair.cmd",
+        ],
+    }
+
+
+def format_zeus_health_report(report: Dict[str, Any]) -> str:
+    lines = [
+        "Zeus Onboarding Health",
+        f"Product: {report['product']} by {ZEUS_VENDOR}",
+        f"Home: {report['home']}",
+        "",
+        "Checks:",
+    ]
+    for item in report.get("checks", []):
+        status = "OK" if item.get("ok") else "MISSING"
+        detail = f" ({item.get('path')})" if item.get("path") else ""
+        if item.get("detail"):
+            detail += f" {item['detail']}"
+        lines.append(f"  {status}: {item.get('label')}{detail}")
+
+    lines.extend(["", "Next safe step:"])
+    if report.get("ready"):
+        lines.append("  Run: zeus setup")
+    else:
+        lines.append("  Repair: zeus-repair.cmd")
+    lines.extend(["", "Useful commands:"])
+    lines.extend(f"  {step}" for step in report.get("next_steps", []))
+    return "\n".join(lines)
+
+
+def handle_zeus_builtin_command(argv: Iterable[str] | None = None) -> bool:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args:
+        return False
+    command = args[0].lower()
+    if command not in {"health", "welcome", "onboarding"}:
+        return False
+    report = build_zeus_health_report(resolve_zeus_home())
+    print(format_zeus_health_report(report))
+    return True
+
+
 def main() -> None:
     """Launch the shared CLI runtime after pinning it to Zeus home."""
     ensure_zeus_runtime()
+    if handle_zeus_builtin_command():
+        return
     from hermes_cli.main import main as hermes_main
 
     hermes_main()

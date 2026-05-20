@@ -32,6 +32,7 @@ if (Test-Path $startHere) {
 
 Write-Host "Quick commands:" -ForegroundColor Cyan
 Write-Host "  zeus setup" -ForegroundColor White
+Write-Host "  zeus health" -ForegroundColor White
 Write-Host "  zeus gateway install" -ForegroundColor White
 Write-Host "  zeus gateway status" -ForegroundColor White
 Write-Host ""
@@ -41,6 +42,11 @@ if (Test-Path $InstallDir) {
 }
 
 if (Test-Path $zeusCmd) {
+    Write-Host "Running Zeus health check..." -ForegroundColor Cyan
+    & $zeusCmd health
+    Write-Host ""
+    Write-Host "If health shows MISSING, run the Zeus repair command from the Start Menu." -ForegroundColor Yellow
+    Write-Host ""
     & $zeusCmd
 } else {
     Write-Host "Could not find Zeus command shim at $zeusCmd" -ForegroundColor Yellow

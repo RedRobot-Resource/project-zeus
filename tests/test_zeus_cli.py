@@ -238,3 +238,60 @@ def test_phase6_zeus_app_shell_is_branded_and_keeps_window_open():
     assert "zeus gateway status" in shell
     assert "NoExit" not in shell
     assert "Read-Host" in shell
+
+
+def test_phase7_zeus_health_report_guides_first_run_without_hermes_jargon(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime, build_zeus_health_report, format_zeus_health_report
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    zeus_home = ensure_zeus_runtime()
+    report = build_zeus_health_report(zeus_home)
+    text = format_zeus_health_report(report)
+
+    assert report["product"] == "Zeus"
+    assert report["home"] == str(zeus_home)
+    assert report["ready"] is True
+    assert "Zeus Onboarding Health" in text
+    assert "Run: zeus setup" in text
+    assert "Run: zeus gateway install" in text
+    assert "Run: zeus-gateway-status.cmd" in text
+    assert "Repair: zeus-repair.cmd" in text
+    assert "Hermes Agent setup wizard" not in text
+
+
+def test_phase7_zeus_health_report_marks_missing_runtime_pieces_actionably(tmp_path, monkeypatch):
+    from zeus_cli import build_zeus_health_report, format_zeus_health_report
+
+    zeus_home = tmp_path / "Zeus"
+    monkeypatch.setenv("ZEUS_HOME", str(zeus_home))
+
+    report = build_zeus_health_report(zeus_home)
+    text = format_zeus_health_report(report)
+
+    assert report["ready"] is False
+    assert "MISSING" in text
+    assert "Run: zeus setup" in text
+    assert "Repair: zeus-repair.cmd" in text
+    assert "Expected Zeus home" in text
+
+
+def test_phase7_zeus_builtin_health_command_prints_without_entering_chat(tmp_path, monkeypatch, capsys):
+    from zeus_cli import ensure_zeus_runtime, handle_zeus_builtin_command
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    ensure_zeus_runtime()
+
+    handled = handle_zeus_builtin_command(["health"])
+    out = capsys.readouterr().out
+
+    assert handled is True
+    assert "Zeus Onboarding Health" in out
+    assert "Next safe step" in out
+
+
+def test_phase7_app_shell_runs_health_before_interactive_client():
+    shell = Path("scripts/zeus-app.ps1").read_text(encoding="utf-8")
+
+    assert "zeus health" in shell
+    assert shell.index("zeus health") < shell.index("& $zeusCmd")
+    assert "If health shows MISSING" in shell
