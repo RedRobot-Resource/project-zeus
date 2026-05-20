@@ -47,7 +47,26 @@ _FALLBACK_PATTERNS = re.compile(
 )
 
 _TASK_NAME_DEFAULT = "Hermes_Gateway"
+_TASK_NAME_ZEUS = "Zeus_Gateway"
 _TASK_DESCRIPTION = "Hermes Agent Gateway - Messaging Platform Integration"
+_TASK_DESCRIPTION_ZEUS = "Zeus Gateway - Messaging Platform Integration"
+
+
+def _is_zeus_runtime() -> bool:
+    try:
+        from hermes_cli.branding import get_runtime_branding
+
+        return get_runtime_branding().product_name == "Zeus"
+    except Exception:
+        return False
+
+
+def _task_description() -> str:
+    return _TASK_DESCRIPTION_ZEUS if _is_zeus_runtime() else _TASK_DESCRIPTION
+
+
+def _gateway_entry_module() -> str:
+    return "zeus_cli" if _is_zeus_runtime() else "hermes_cli.main"
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +161,8 @@ def get_task_name() -> str:
     from hermes_cli.gateway import _profile_suffix
 
     suffix = _profile_suffix()
+    if _is_zeus_runtime():
+        return _TASK_NAME_ZEUS if not suffix else f"{_TASK_NAME_ZEUS}_{suffix}"
     if not suffix:
         return _TASK_NAME_DEFAULT
     return f"{_TASK_NAME_DEFAULT}_{suffix}"
@@ -212,9 +233,13 @@ def _build_gateway_cmd_script(
     the per-user PATH the Scheduled Task was created with, and forcibly
     rewriting PATH tends to break Homebrew/nvm-style installations.
     """
-    lines = ["@echo off", f"rem {_TASK_DESCRIPTION}"]
+    lines = ["@echo off", f"rem {_task_description()}"]
     lines.append(f"cd /d {_quote_cmd_script_arg(working_dir)}")
     lines.append(f'set "HERMES_HOME={hermes_home}"')
+    if _is_zeus_runtime():
+        zeus_home = os.environ.get("ZEUS_HOME") or hermes_home
+        lines.append(f'set "ZEUS_HOME={zeus_home}"')
+        lines.append('set "HERMES_RUNTIME_BRAND=Zeus"')
     lines.append('set "PYTHONIOENCODING=utf-8"')
     lines.append('set "HERMES_GATEWAY_DETACHED=1"')
     # VIRTUAL_ENV lets the gateway's own python detection find the venv
@@ -222,7 +247,7 @@ def _build_gateway_cmd_script(
     venv_dir = str(Path(python_path).resolve().parent.parent)
     lines.append(f'set "VIRTUAL_ENV={venv_dir}"')
 
-    prog_args = [python_path, "-m", "hermes_cli.main"]
+    prog_args = [python_path, "-m", _gateway_entry_module()]
     if profile_arg:
         prog_args.extend(profile_arg.split())
     prog_args.extend(["gateway", "run", "--replace"])
@@ -234,7 +259,7 @@ def _build_startup_launcher(script_path: Path) -> str:
     """The tiny .cmd that goes in the Startup folder. Just minimizes and chains."""
     lines = [
         "@echo off",
-        f"rem {_TASK_DESCRIPTION}",
+        f"rem {_task_description()}",
         # ``start "" /min`` detaches with a minimized console window.
         # ``/d /c`` on cmd.exe skips AUTORUN and runs the target script once.
         f'start "" /min cmd.exe /d /c {_quote_cmd_script_arg(str(script_path))}',
@@ -364,7 +389,7 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     hermes_home = str(Path(get_hermes_home()).resolve())
     profile_arg = _profile_arg(hermes_home)
 
-    argv = [python_exe, "-m", "hermes_cli.main"]
+    argv = [python_exe, "-m", _gateway_entry_module()]
     if profile_arg:
         argv.extend(profile_arg.split())
     argv.extend(["gateway", "run", "--replace"])
@@ -375,6 +400,9 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
         "HERMES_GATEWAY_DETACHED": "1",
         "VIRTUAL_ENV": str(Path(python_exe).resolve().parent.parent),
     }
+    if _is_zeus_runtime():
+        env_overlay["ZEUS_HOME"] = os.environ.get("ZEUS_HOME") or hermes_home
+        env_overlay["HERMES_RUNTIME_BRAND"] = "Zeus"
     return argv, working_dir, env_overlay
 
 

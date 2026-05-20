@@ -139,3 +139,59 @@ def test_phase4_zeus_version_and_compact_banner_hide_hermes_and_nous(tmp_path, m
     assert "Nous Research" not in compact
     assert "Zeus" in compact
     assert "Red Robot Resource" in compact
+
+
+def test_phase5_zeus_gateway_service_names_are_not_hermes(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+    from hermes_cli.gateway import get_launchd_label, get_service_name, generate_systemd_unit
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    monkeypatch.delenv("HERMES_RUNTIME_BRAND", raising=False)
+    ensure_zeus_runtime()
+
+    assert get_service_name() == "zeus-gateway"
+    assert get_launchd_label() == "com.redrobotresource.zeus.gateway"
+
+    unit = generate_systemd_unit()
+    assert "Description=Zeus Gateway - Messaging Platform Integration" in unit
+    assert " -m zeus_cli gateway run --replace" in unit
+    assert 'Environment="ZEUS_HOME=' in unit
+    assert 'Environment="HERMES_RUNTIME_BRAND=Zeus"' in unit
+    assert "hermes-gateway" not in unit
+
+
+def test_phase5_windows_gateway_service_uses_zeus_task_and_launcher(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+    from hermes_cli import gateway_windows
+
+    monkeypatch.setattr(gateway_windows.sys, "platform", "win32")
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    monkeypatch.delenv("HERMES_RUNTIME_BRAND", raising=False)
+    ensure_zeus_runtime()
+
+    script = gateway_windows._build_gateway_cmd_script(
+        "C:\\Zeus\\project-zeus\\.venv\\Scripts\\python.exe",
+        "C:\\Zeus\\project-zeus",
+        str(tmp_path / "Zeus"),
+        "",
+    )
+
+    assert gateway_windows.get_task_name() == "Zeus_Gateway"
+    assert "Zeus Gateway - Messaging Platform Integration" in script
+    assert "set \"ZEUS_HOME=" in script
+    assert "set \"HERMES_RUNTIME_BRAND=Zeus\"" in script
+    assert " -m zeus_cli gateway run --replace" in script
+    assert "hermes_cli.main" not in script
+
+
+def test_phase5_installer_exposes_gateway_service_controls():
+    script = Path("scripts/install-zeus.ps1").read_text(encoding="utf-8")
+
+    assert "zeus-gateway-start.cmd" in script
+    assert "zeus-gateway-stop.cmd" in script
+    assert "zeus-gateway-status.cmd" in script
+    assert "zeus gateway install" in script
+    assert "zeus gateway start" in script
+    assert "zeus gateway stop" in script
+    assert "zeus gateway status" in script
+    assert "Zeus gateway service" in script

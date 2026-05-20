@@ -1256,6 +1256,35 @@ _SERVICE_BASE = "hermes-gateway"
 SERVICE_DESCRIPTION = "Hermes Agent Gateway - Messaging Platform Integration"
 
 
+def _is_zeus_runtime() -> bool:
+    try:
+        from hermes_cli.branding import get_runtime_branding
+
+        return get_runtime_branding().product_name == "Zeus"
+    except Exception:
+        return False
+
+
+def _gateway_service_description() -> str:
+    if _is_zeus_runtime():
+        return "Zeus Gateway - Messaging Platform Integration"
+    return SERVICE_DESCRIPTION
+
+
+def _gateway_entry_module() -> str:
+    return "zeus_cli" if _is_zeus_runtime() else "hermes_cli.main"
+
+
+def _gateway_service_environment_lines() -> list[str]:
+    if not _is_zeus_runtime():
+        return []
+    zeus_home = os.environ.get("ZEUS_HOME") or str(get_hermes_home().resolve())
+    return [
+        f'Environment="ZEUS_HOME={zeus_home}"',
+        'Environment="HERMES_RUNTIME_BRAND=Zeus"',
+    ]
+
+
 def _profile_suffix() -> str:
     """Derive a service-name suffix from the current HERMES_HOME.
 
@@ -1318,6 +1347,8 @@ def get_service_name() -> str:
     Profile ``~/.hermes/profiles/coder`` returns ``hermes-gateway-coder``.
     Any other HERMES_HOME appends a short hash for uniqueness.
     """
+    if _is_zeus_runtime():
+        return "zeus-gateway"
     suffix = _profile_suffix()
     if not suffix:
         return _SERVICE_BASE
@@ -2104,6 +2135,12 @@ def _hermes_home_for_target_user(target_home_dir: str) -> str:
 
 
 def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) -> str:
+    service_description = _gateway_service_description()
+    entry_module = _gateway_entry_module()
+    extra_env = "\n".join(_gateway_service_environment_lines())
+    if extra_env:
+        extra_env += "\n"
+
     python_path = get_python_path()
     working_dir = str(PROJECT_ROOT)
     detected_venv = _detect_venv_dir()
@@ -2146,7 +2183,7 @@ def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) 
         path_entries.extend(common_bin_paths)
         sane_path = ":".join(path_entries)
         return f"""[Unit]
-Description={SERVICE_DESCRIPTION}
+Description={service_description}
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -2155,7 +2192,7 @@ StartLimitIntervalSec=0
 Type=simple
 User={username}
 Group={group_name}
-ExecStart={python_path} -m hermes_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run --replace
+ExecStart={python_path} -m {entry_module}{f" {profile_arg}" if profile_arg else ""} gateway run --replace
 WorkingDirectory={working_dir}
 Environment="HOME={home_dir}"
 Environment="USER={username}"
@@ -2163,7 +2200,7 @@ Environment="LOGNAME={username}"
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
-Restart=always
+{extra_env}Restart=always
 RestartSec=5
 RestartMaxDelaySec=300
 RestartSteps=5
@@ -2186,19 +2223,19 @@ WantedBy=multi-user.target
     path_entries.extend(common_bin_paths)
     sane_path = ":".join(path_entries)
     return f"""[Unit]
-Description={SERVICE_DESCRIPTION}
+Description={service_description}
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart={python_path} -m hermes_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run --replace
+ExecStart={python_path} -m {entry_module}{f" {profile_arg}" if profile_arg else ""} gateway run --replace
 WorkingDirectory={working_dir}
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
-Restart=always
+{extra_env}Restart=always
 RestartSec=5
 RestartMaxDelaySec=300
 RestartSteps=5
@@ -2732,6 +2769,8 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
 
 def get_launchd_label() -> str:
     """Return the launchd service label, scoped per profile."""
+    if _is_zeus_runtime():
+        return "com.redrobotresource.zeus.gateway"
     suffix = _profile_suffix()
     return f"ai.hermes.gateway-{suffix}" if suffix else "ai.hermes.gateway"
 
@@ -2748,6 +2787,14 @@ def generate_launchd_plist() -> str:
     log_dir.mkdir(parents=True, exist_ok=True)
     label = get_launchd_label()
     profile_arg = _profile_arg(hermes_home)
+    extra_launchd_env = ""
+    if _is_zeus_runtime():
+        zeus_home = os.environ.get("ZEUS_HOME") or hermes_home
+        extra_launchd_env = f"""
+        <key>ZEUS_HOME</key>
+        <string>{zeus_home}</string>
+        <key>HERMES_RUNTIME_BRAND</key>
+        <string>Zeus</string>"""
     # Build a sane PATH for the launchd plist.  launchd provides only a
     # minimal default (/usr/bin:/bin:/usr/sbin:/sbin) which misses Homebrew,
     # nvm, cargo, etc.  We prepend venv/bin and node_modules/.bin (matching
@@ -2773,7 +2820,7 @@ def generate_launchd_plist() -> str:
     prog_args = [
         f"<string>{python_path}</string>",
         "<string>-m</string>",
-        "<string>hermes_cli.main</string>",
+        f"<string>{_gateway_entry_module()}</string>",
     ]
     if profile_arg:
         for part in profile_arg.split():
@@ -2807,7 +2854,7 @@ def generate_launchd_plist() -> str:
         <key>VIRTUAL_ENV</key>
         <string>{venv_dir}</string>
         <key>HERMES_HOME</key>
-        <string>{hermes_home}</string>
+        <string>{hermes_home}</string>{extra_launchd_env}
     </dict>
     
     <key>RunAtLoad</key>

@@ -37,6 +37,10 @@ $ZeusShortcutName = "Zeus.lnk"
 $ZeusUninstallName = "Uninstall Zeus.cmd"
 $ZeusRepairName = "zeus-repair.cmd"
 $ZeusUpdateName = "zeus-update.cmd"
+$ZeusGatewayInstallName = "zeus-gateway-install.cmd"
+$ZeusGatewayStartName = "zeus-gateway-start.cmd"
+$ZeusGatewayStopName = "zeus-gateway-stop.cmd"
+$ZeusGatewayStatusName = "zeus-gateway-status.cmd"
 $UserStatePaths = @("auth.json", "config.yaml", ".env", "sessions", "memories", "state.db", "logs", "workspace", "home")
 
 function Write-Banner {
@@ -215,6 +219,17 @@ function Install-ZeusUninstaller {
     Write-Success "Created repair, update, and uninstall commands in $ZeusBinDir"
 }
 
+
+function Install-ZeusGatewayServiceCommands {
+    New-Item -ItemType Directory -Force -Path $ZeusBinDir | Out-Null
+    $prefix = "@echo off`r`nset ZEUS_HOME=$ZeusHome`r`nset HERMES_HOME=$ZeusHome`r`nset HERMES_RUNTIME_BRAND=Zeus`r`n"
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusGatewayInstallName) -Value ($prefix + "zeus gateway install`r`n") -Encoding ASCII
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusGatewayStartName) -Value ($prefix + "zeus gateway start`r`n") -Encoding ASCII
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusGatewayStopName) -Value ($prefix + "zeus gateway stop`r`n") -Encoding ASCII
+    Set-Content -Path (Join-Path $ZeusBinDir $ZeusGatewayStatusName) -Value ($prefix + "zeus gateway status`r`n") -Encoding ASCII
+    Write-Success "Created Zeus gateway service controls in $ZeusBinDir"
+}
+
 function Initialize-ZeusRuntime {
     $env:ZEUS_HOME = $ZeusHome
     $env:HERMES_HOME = $ZeusHome
@@ -233,6 +248,7 @@ function Update-Zeus {
     New-ZeusDesktopShortcut
     New-ZeusStartMenuShortcut
     Install-ZeusUninstaller
+    Install-ZeusGatewayServiceCommands
     Initialize-ZeusRuntime
     Write-Success "Zeus update complete."
 }
@@ -251,6 +267,7 @@ function Repair-Zeus {
     New-ZeusDesktopShortcut
     New-ZeusStartMenuShortcut
     Install-ZeusUninstaller
+    Install-ZeusGatewayServiceCommands
     Initialize-ZeusRuntime
     Write-Success "Zeus repair complete."
 }
@@ -268,6 +285,10 @@ function Uninstall-Zeus {
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusUninstallName)
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusRepairName)
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusUpdateName)
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusGatewayInstallName)
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusGatewayStartName)
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusGatewayStopName)
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusGatewayStatusName)
 
     if (Test-Path $InstallDir) {
         Remove-Item -Recurse -Force $InstallDir
@@ -293,6 +314,7 @@ function Install-Zeus {
     New-ZeusDesktopShortcut
     New-ZeusStartMenuShortcut
     Install-ZeusUninstaller
+    Install-ZeusGatewayServiceCommands
     Initialize-ZeusRuntime
 
     if (-not $SkipSetup) {
