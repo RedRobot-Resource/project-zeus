@@ -34,6 +34,8 @@ $ZeusInstallLogDir = Join-Path $ZeusHome "logs"
 $ZeusInstallLog = Join-Path $ZeusInstallLogDir ("install-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
 $ZeusBinDir = Join-Path $ZeusHome "bin"
 $ZeusShortcutName = "Zeus.lnk"
+$ZeusConsoleShortcutName = "Zeus Console.lnk"
+$ZeusAppLauncherName = "zeus-app.cmd"
 $ZeusUninstallName = "Uninstall Zeus.cmd"
 $ZeusRepairName = "zeus-repair.cmd"
 $ZeusUpdateName = "zeus-update.cmd"
@@ -162,7 +164,7 @@ function New-ZeusCommandShim {
     New-Item -ItemType Directory -Force -Path $ZeusBinDir | Out-Null
     $cmdPath = Join-Path $ZeusBinDir "zeus.cmd"
     $python = Get-ZeusPython
-    $shim = "@echo off`r`nset ZEUS_HOME=$ZeusHome`r`nset HERMES_HOME=$ZeusHome`r`n`"$python`" -m zeus_cli %*`r`n"
+    $shim = "@echo off`r`nset ZEUS_HOME=$ZeusHome`r`nset HERMES_HOME=$ZeusHome`r`nset HERMES_RUNTIME_BRAND=Zeus`r`n`"$python`" -m zeus_cli %*`r`n"
     Set-Content -Path $cmdPath -Value $shim -Encoding ASCII
     Write-Success "Created zeus command shim: $cmdPath"
 
@@ -176,14 +178,22 @@ function New-ZeusCommandShim {
     }
 }
 
+function New-ZeusAppShell {
+    New-Item -ItemType Directory -Force -Path $ZeusBinDir | Out-Null
+    $launcherPath = Join-Path $ZeusBinDir $ZeusAppLauncherName
+    $appShell = Join-Path $InstallDir "scripts\zeus-app.ps1"
+    $launcher = "@echo off`r`nset ZEUS_HOME=$ZeusHome`r`nset HERMES_HOME=$ZeusHome`r`nset HERMES_RUNTIME_BRAND=Zeus`r`npowershell -ExecutionPolicy Bypass -File `"$appShell`" -ZeusHome `"$ZeusHome`" -InstallDir `"$InstallDir`"`r`n"
+    Set-Content -Path $launcherPath -Value $launcher -Encoding ASCII
+    Write-Success "Created Zeus app shell: $launcherPath"
+}
+
 function New-ZeusDesktopShortcut {
     $desktop = [Environment]::GetFolderPath("Desktop")
     if (-not $desktop) { return }
-    $target = Join-Path $ZeusBinDir "zeus.cmd"
     $shortcutPath = Join-Path $desktop $ZeusShortcutName
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $target
+    $shortcut.TargetPath = Join-Path $ZeusBinDir $ZeusAppLauncherName
     $shortcut.WorkingDirectory = $ZeusHome
     $shortcut.Description = "Launch Zeus by Red Robot Resource"
     $shortcut.Save()
@@ -196,14 +206,20 @@ function New-ZeusStartMenuShortcut {
     $folder = Join-Path $programs "Zeus"
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
 
-    $target = Join-Path $ZeusBinDir "zeus.cmd"
     $shortcutPath = Join-Path $folder $ZeusShortcutName
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $target
+    $shortcut.TargetPath = Join-Path $ZeusBinDir $ZeusAppLauncherName
     $shortcut.WorkingDirectory = $ZeusHome
     $shortcut.Description = "Launch Zeus by Red Robot Resource"
     $shortcut.Save()
+
+    $consoleShortcutPath = Join-Path $folder $ZeusConsoleShortcutName
+    $consoleShortcut = $shell.CreateShortcut($consoleShortcutPath)
+    $consoleShortcut.TargetPath = Join-Path $ZeusBinDir "zeus.cmd"
+    $consoleShortcut.WorkingDirectory = $ZeusHome
+    $consoleShortcut.Description = "Open Zeus command console by Red Robot Resource"
+    $consoleShortcut.Save()
 
     Set-Content -Path (Join-Path $folder $ZeusUninstallName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Uninstall`r`n" -Encoding ASCII
     Set-Content -Path (Join-Path $folder $ZeusRepairName) -Value "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\install-zeus.ps1`" -Repair -SkipSetup`r`n" -Encoding ASCII
@@ -245,6 +261,7 @@ function Update-Zeus {
     Install-ZeusSource
     Install-ZeusPackage
     New-ZeusCommandShim
+    New-ZeusAppShell
     New-ZeusDesktopShortcut
     New-ZeusStartMenuShortcut
     Install-ZeusUninstaller
@@ -264,6 +281,7 @@ function Repair-Zeus {
     Install-ZeusSource
     Install-ZeusPackage
     New-ZeusCommandShim
+    New-ZeusAppShell
     New-ZeusDesktopShortcut
     New-ZeusStartMenuShortcut
     Install-ZeusUninstaller
@@ -282,6 +300,7 @@ function Uninstall-Zeus {
 
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps" "zeus.cmd")
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir "zeus.cmd")
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusAppLauncherName)
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusUninstallName)
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusRepairName)
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $ZeusBinDir $ZeusUpdateName)
@@ -311,6 +330,7 @@ function Install-Zeus {
     Install-ZeusSource
     Install-ZeusPackage
     New-ZeusCommandShim
+    New-ZeusAppShell
     New-ZeusDesktopShortcut
     New-ZeusStartMenuShortcut
     Install-ZeusUninstaller

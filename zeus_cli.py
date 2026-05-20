@@ -90,6 +90,30 @@ def _write_default_soul(zeus_home: Path) -> None:
     )
 
 
+def _write_start_here(zeus_home: Path) -> None:
+    guide_path = zeus_home / "ZEUS_START_HERE.md"
+    if guide_path.exists():
+        return
+    guide_path.write_text(
+        "# Zeus Start Here\n\n"
+        "Zeus by Red Robot Resource is installed as a Windows AI client. "
+        "Runs independently from Hermes Agent with its own home at "
+        "`%LOCALAPPDATA%\\Zeus`, config, sessions, logs, and gateway service.\n\n"
+        "## First launch\n\n"
+        "Run `zeus setup` to connect model and platform settings. Then run "
+        "`zeus` to open the client.\n\n"
+        "## Gateway service\n\n"
+        "Use `zeus gateway install` once to register the Zeus gateway service. "
+        "The Windows installer also creates helper commands including "
+        "`zeus-gateway-start.cmd`, `zeus-gateway-stop.cmd`, and "
+        "`zeus-gateway-status.cmd`.\n\n"
+        "## Repair and update\n\n"
+        "Use the Start Menu Zeus repair and update commands if the app shell, "
+        "shortcuts, or local command shims need to be recreated.\n",
+        encoding="utf-8",
+    )
+
+
 def ensure_zeus_runtime() -> Path:
     """Create and select the independent Zeus runtime home.
 
@@ -109,6 +133,7 @@ def ensure_zeus_runtime() -> Path:
     _deep_merge_missing(config, _zeus_runtime_defaults())
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     _write_default_soul(zeus_home)
+    _write_start_here(zeus_home)
 
     os.environ["HERMES_HOME"] = str(zeus_home)
     os.environ.setdefault("ZEUS_HOME", str(zeus_home))

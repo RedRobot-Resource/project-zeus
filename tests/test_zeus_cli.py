@@ -195,3 +195,46 @@ def test_phase5_installer_exposes_gateway_service_controls():
     assert "zeus gateway stop" in script
     assert "zeus gateway status" in script
     assert "Zeus gateway service" in script
+
+
+def test_phase6_zeus_runtime_writes_first_run_guide(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    zeus_home = ensure_zeus_runtime()
+
+    guide = zeus_home / "ZEUS_START_HERE.md"
+    assert guide.is_file()
+    text = guide.read_text(encoding="utf-8")
+    assert "# Zeus Start Here" in text
+    assert "Red Robot Resource" in text
+    assert "zeus setup" in text
+    assert "zeus gateway install" in text
+    assert "zeus-gateway-start.cmd" in text
+    assert "%LOCALAPPDATA%\\Zeus" in text
+    assert "Runs independently from Hermes Agent" in text
+
+
+def test_phase6_installer_creates_windows_app_shell_shortcuts():
+    script = Path("scripts/install-zeus.ps1").read_text(encoding="utf-8")
+
+    assert "$ZeusAppLauncherName = \"zeus-app.cmd\"" in script
+    assert "New-ZeusAppShell" in script
+    assert "scripts\\zeus-app.ps1" in script
+    assert "$shortcut.TargetPath = Join-Path $ZeusBinDir $ZeusAppLauncherName" in script
+    assert "Zeus Console.lnk" in script
+    assert "zeus.cmd" in script
+    assert "Launch Zeus by Red Robot Resource" in script
+
+
+def test_phase6_zeus_app_shell_is_branded_and_keeps_window_open():
+    shell = Path("scripts/zeus-app.ps1").read_text(encoding="utf-8")
+
+    assert "Zeus by Red Robot Resource" in shell
+    assert "$env:ZEUS_HOME" in shell
+    assert "$env:HERMES_HOME" in shell
+    assert "$env:HERMES_RUNTIME_BRAND = \"Zeus\"" in shell
+    assert "ZEUS_START_HERE.md" in shell
+    assert "zeus gateway status" in shell
+    assert "NoExit" not in shell
+    assert "Read-Host" in shell
