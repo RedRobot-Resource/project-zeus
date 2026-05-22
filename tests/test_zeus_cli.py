@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import shutil
+import subprocess
+
+import pytest
 import yaml
 
 
@@ -289,9 +293,138 @@ def test_phase7_zeus_builtin_health_command_prints_without_entering_chat(tmp_pat
     assert "Next safe step" in out
 
 
-def test_phase7_app_shell_runs_health_before_interactive_client():
+def test_phase7_app_shell_still_has_health_and_console_recovery_path():
     shell = Path("scripts/zeus-app.ps1").read_text(encoding="utf-8")
 
-    assert "zeus health" in shell
-    assert shell.index("zeus health") < shell.index("& $zeusCmd")
-    assert "If health shows MISSING" in shell
+    assert "Arguments \"health\"" in shell
+    assert "Show-ZeusConsoleFallback" in shell
+    assert "& $zeusCmd health" in shell
+    assert "Run the Zeus repair command from the Start Menu" in shell
+
+
+def test_phase9_zeus_app_shell_is_desktop_launcher_not_raw_terminal_drop_in():
+    shell = Path("scripts/zeus-app.ps1").read_text(encoding="utf-8")
+
+    assert "System.Windows.Forms" in shell
+    assert "Zeus by Red Robot Resource" in shell
+    assert "Open Zeus Chat" in shell
+    assert "Guided Setup" in shell
+    assert "Health Check" in shell
+    assert "Settings" in shell
+    assert "Gateway Status" in shell
+    assert "Repair / Update" in shell
+    assert "Open first-run guide" in shell
+    assert "Invoke-ZeusCommandWindow" in shell
+    assert "ConsoleFallback" in shell
+    assert "Read-Host" in shell
+
+
+def test_phase9_zeus_powershell_scripts_parse_without_syntax_errors():
+    powershell = shutil.which("pwsh") or shutil.which("powershell") or shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("PowerShell is not available on this host")
+
+    script_paths = [Path("scripts/zeus-app.ps1"), Path("scripts/install-zeus.ps1")]
+    unc_paths = ["\\\\wsl.localhost\\Ubuntu" + str(path.resolve()) for path in script_paths]
+    path_literals = ", ".join("'" + path.replace("'", "''") + "'" for path in unc_paths)
+    command = rf"""
+$ErrorActionPreference = 'Stop'
+$Paths = @({path_literals})
+foreach ($Path in $Paths) {{
+    $tokens = $null
+    $errors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errors) | Out-Null
+    if ($errors -and $errors.Count -gt 0) {{
+        $errors | ForEach-Object {{ Write-Error ("{{0}}: {{1}}" -f $_.Extent.StartLineNumber, $_.Message) }}
+        exit 1
+    }}
+}}
+"""
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-Command", command],
+        cwd=Path.cwd(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_phase9_zeus_app_shell_quotes_cmd_arguments_before_launching():
+    shell = Path("scripts/zeus-app.ps1").read_text(encoding="utf-8")
+
+    assert "function ConvertTo-ZeusCmdArgument" in shell
+    assert "ConvertTo-ZeusCmdArgument -Value $InstallDir" in shell
+    assert "ConvertTo-ZeusCmdArgument -Value $zeusCmd" in shell
+    assert "ConvertTo-ZeusCmdArgument -Value $Title" in shell
+    assert "Join-ZeusCommandArguments" in shell
+    assert "cmd.exe" in shell
+
+
+def test_phase8_zeus_config_dashboard_feels_like_product_interface_not_terminal(tmp_path, monkeypatch):
+    from zeus_cli import ensure_zeus_runtime
+    from hermes_cli.branding import get_runtime_branding
+    from cli import _format_config_dashboard
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    monkeypatch.delenv("HERMES_RUNTIME_BRAND", raising=False)
+    ensure_zeus_runtime()
+
+    text = "\n".join(
+        _format_config_dashboard(
+            brand=get_runtime_branding(),
+            model="gpt-5.5",
+            base_url="https://api.example.com/v1",
+            api_key_display="********1234",
+            runtime_mode="local",
+            workspace="C:\\Users\\D\\Zeus Workspace",
+            timeout="60s",
+            ssh_target=None,
+            max_turns="90",
+            toolsets="web, file, terminal",
+            verbose="False",
+            started="2026-05-20 09:00:00",
+            settings_file="C:\\Users\\D\\AppData\\Local\\Zeus\\config.yaml (loaded)",
+        )
+    )
+
+    assert "Zeus Control Center" in text
+    assert "Red Robot Resource secure AI workspace" in text
+    assert "Connection" in text
+    assert "Runtime" in text
+    assert "Workspace" in text
+    assert "Automation" in text
+    assert "Settings File" in text
+    assert "Hermes" not in text
+    assert "Nous" not in text
+    assert "-- Terminal --" not in text
+    assert "Config File" not in text
+
+
+def test_phase8_zeus_config_command_uses_zeus_control_center_copy(tmp_path, monkeypatch, capsys):
+    from zeus_cli import ensure_zeus_runtime
+    from hermes_cli.config import show_config
+
+    monkeypatch.setenv("ZEUS_HOME", str(tmp_path / "Zeus"))
+    monkeypatch.delenv("HERMES_RUNTIME_BRAND", raising=False)
+    ensure_zeus_runtime()
+
+    show_config()
+    out = capsys.readouterr().out
+
+    assert "Zeus Control Center" in out
+    assert "Red Robot Resource secure AI workspace" in out
+    assert "◆ Workspace" in out
+    assert "◆ Access Keys" in out
+    assert "◆ AI Connection" in out
+    assert "◆ Interface" in out
+    assert "◆ Runtime" in out
+    assert "◆ Memory & Context" in out
+    assert "◆ Messaging" in out
+    assert "zeus config edit" in out
+    assert "zeus setup" in out
+    assert "Hermes Configuration" not in out
+    assert "Nous" not in out
+    assert "◆ Terminal" not in out
+    assert "hermes setup" not in out

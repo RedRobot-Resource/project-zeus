@@ -4752,22 +4752,28 @@ def redact_key(key: str) -> str:
 def show_config():
     """Display current configuration."""
     config = load_config()
-    
+    from hermes_cli.branding import get_runtime_branding
+
+    brand = get_runtime_branding()
+    command = "zeus" if brand.product_name == "Zeus" else "hermes"
+
     print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│              ⚕ Hermes Configuration                    │", Colors.CYAN))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
-    
+    print(color("╭" + "─" * 57 + "╮", Colors.CYAN))
+    title = f"{brand.product_name} Control Center"
+    print(color("│" + title.center(57) + "│", Colors.CYAN))
+    print(color("│" + f"{brand.vendor_name} secure AI workspace".center(57) + "│", Colors.CYAN))
+    print(color("╰" + "─" * 57 + "╯", Colors.CYAN))
+
     # Paths
     print()
-    print(color("◆ Paths", Colors.CYAN, Colors.BOLD))
-    print(f"  Config:       {get_config_path()}")
+    print(color("◆ Workspace", Colors.CYAN, Colors.BOLD))
+    print(f"  Settings:     {get_config_path()}")
     print(f"  Secrets:      {get_env_path()}")
-    print(f"  Install:      {get_project_root()}")
-    
+    print(f"  App files:    {get_project_root()}")
+
     # API Keys
     print()
-    print(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
+    print(color("◆ Access Keys", Colors.CYAN, Colors.BOLD))
     
     keys = [
         ("OPENROUTER_API_KEY", "OpenRouter"),
@@ -4790,13 +4796,13 @@ def show_config():
     
     # Model settings
     print()
-    print(color("◆ Model", Colors.CYAN, Colors.BOLD))
+    print(color("◆ AI Connection", Colors.CYAN, Colors.BOLD))
     print(f"  Model:        {config.get('model', 'not set')}")
     print(f"  Max turns:    {config.get('agent', {}).get('max_turns', DEFAULT_CONFIG['agent']['max_turns'])}")
     
     # Display
     print()
-    print(color("◆ Display", Colors.CYAN, Colors.BOLD))
+    print(color("◆ Interface", Colors.CYAN, Colors.BOLD))
     display = config.get('display', {})
     print(f"  Personality:  {display.get('personality', 'kawaii')}")
     print(f"  Reasoning:    {'on' if display.get('show_reasoning', False) else 'off'}")
@@ -4806,9 +4812,9 @@ def show_config():
     ump_last = ump.get('last_lines', 2)
     print(f"  User preview: first {ump_first} line(s), last {ump_last} line(s)")
 
-    # Terminal
+    # Runtime
     print()
-    print(color("◆ Terminal", Colors.CYAN, Colors.BOLD))
+    print(color("◆ Runtime", Colors.CYAN, Colors.BOLD))
     terminal = config.get('terminal', {})
     print(f"  Backend:      {terminal.get('backend', 'local')}")
     print(f"  Working dir:  {terminal.get('cwd', '.')}")
@@ -4846,7 +4852,7 @@ def show_config():
 
     # Compression
     print()
-    print(color("◆ Context Compression", Colors.CYAN, Colors.BOLD))
+    print(color("◆ Memory & Context", Colors.CYAN, Colors.BOLD))
     compression = config.get('compression', {})
     enabled = compression.get('enabled', True)
     print(f"  Enabled:      {'yes' if enabled else 'no'}")
@@ -4886,7 +4892,7 @@ def show_config():
     
     # Messaging
     print()
-    print(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
+    print(color("◆ Messaging", Colors.CYAN, Colors.BOLD))
     
     telegram_token = get_env_value('TELEGRAM_BOT_TOKEN')
     discord_token = get_env_value('DISCORD_BOT_TOKEN')
@@ -4913,9 +4919,9 @@ def show_config():
 
     print()
     print(color("─" * 60, Colors.DIM))
-    print(color("  hermes config edit     # Edit config file", Colors.DIM))
-    print(color("  hermes config set <key> <value>", Colors.DIM))
-    print(color("  hermes setup           # Run setup wizard", Colors.DIM))
+    print(color(f"  {command} config edit     # Edit settings", Colors.DIM))
+    print(color(f"  {command} config set <key> <value>", Colors.DIM))
+    print(color(f"  {command} setup           # Guided setup", Colors.DIM))
     print()
 
 

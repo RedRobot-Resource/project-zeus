@@ -150,6 +150,29 @@ def _should_fall_back(code: int, detail: str) -> bool:
 # Paths: where we stash our task script and where Startup lives
 # ---------------------------------------------------------------------------
 
+def _gateway_profile_suffix() -> str:
+    """Derive the gateway service suffix without importing gateway runtime modules."""
+    import hashlib
+
+    from hermes_constants import get_default_hermes_root, get_hermes_home
+
+    if _is_zeus_runtime():
+        return ""
+    home = get_hermes_home().resolve()
+    default = get_default_hermes_root().resolve()
+    if home == default:
+        return ""
+    profiles_root = (default / "profiles").resolve()
+    try:
+        rel = home.relative_to(profiles_root)
+        parts = rel.parts
+        if len(parts) == 1 and re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", parts[0]):
+            return parts[0]
+    except ValueError:
+        pass
+    return hashlib.sha256(str(home).encode()).hexdigest()[:8]
+
+
 def get_task_name() -> str:
     """Scheduled Task name, scoped per profile.
 
@@ -157,10 +180,7 @@ def get_task_name() -> str:
     Named profile X: ``Hermes_Gateway_<X>``
     """
     _assert_windows()
-    # Local import to avoid circular module initialization during hermes_cli boot.
-    from hermes_cli.gateway import _profile_suffix
-
-    suffix = _profile_suffix()
+    suffix = _gateway_profile_suffix()
     if _is_zeus_runtime():
         return _TASK_NAME_ZEUS if not suffix else f"{_TASK_NAME_ZEUS}_{suffix}"
     if not suffix:

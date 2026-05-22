@@ -2361,8 +2361,9 @@ def _build_compact_banner() -> str:
 
     vendor_name = brand.vendor_name if brand else "Nous Research"
     if skin_name == "default":
-        product = brand.product_name if brand else "⚕ NOUS HERMES"
-        tagline = brand.compact_tagline if brand else "AI Agent Framework"
+        product = "⚕ NOUS HERMES"
+        tagline = "AI Agent Framework"
+        vendor_name = "Nous Research"
         line1 = f"{product} - {tagline} by {vendor_name}"
         tiny_line = product
     else:
@@ -2501,6 +2502,63 @@ def save_config_value(key_path: str, value: any) -> bool:
     except Exception as e:
         logger.error("Failed to save config: %s", e)
         return False
+def _format_config_dashboard(
+    *,
+    brand: Any,
+    model: str,
+    base_url: str,
+    api_key_display: str,
+    runtime_mode: str,
+    workspace: str,
+    timeout: str,
+    ssh_target: str | None,
+    max_turns: str,
+    toolsets: str,
+    verbose: str,
+    started: str,
+    settings_file: str,
+) -> list[str]:
+    """Return a branded, card-style configuration overview."""
+    title = f"{brand.product_name} Control Center"
+    subtitle = f"{brand.vendor_name} secure AI workspace"
+    width = 76
+
+    def fit(text: str) -> str:
+        clean = str(text)
+        return clean if len(clean) <= width - 4 else clean[: width - 7] + "..."
+
+    def row(label: str, value: str) -> str:
+        body = f"{label:<16} {fit(value)}"
+        return "│ " + body[: width - 2].ljust(width - 2) + " │"
+
+    lines = [
+        "╭" + "─" * width + "╮",
+        "│" + title.center(width) + "│",
+        "│" + subtitle.center(width) + "│",
+        "├" + "─" * width + "┤",
+        row("Connection", model or "Not selected"),
+        row("Provider URL", base_url or "Not set"),
+        row("Access Key", api_key_display),
+        "│" + " " * width + "│",
+        row("Runtime", runtime_mode or "local"),
+    ]
+    if ssh_target:
+        lines.append(row("Remote Host", ssh_target))
+    lines.extend(
+        [
+            row("Workspace", workspace),
+            row("Timeout", timeout),
+            "│" + " " * width + "│",
+            row("Automation", f"{max_turns} guided turns"),
+            row("Capabilities", toolsets or "all"),
+            row("Detail Mode", verbose),
+            "│" + " " * width + "│",
+            row("Session Start", started),
+            row("Settings File", settings_file),
+            "╰" + "─" * width + "╯",
+        ]
+    )
+    return lines
 
 
 
@@ -5676,54 +5734,45 @@ class HermesCLI:
         print()
 
     def show_config(self):
-        """Display current configuration with kawaii ASCII art."""
-        # Get terminal config from environment (which was set from cli-config.yaml)
+        """Display current configuration as a branded control-center view."""
         terminal_env = os.getenv("TERMINAL_ENV", "local")
         terminal_cwd = os.getenv("TERMINAL_CWD", os.getcwd())
         terminal_timeout = os.getenv("TERMINAL_TIMEOUT", "60")
-        
+
         user_config_path = _hermes_home / 'config.yaml'
         project_config_path = Path(__file__).parent / 'cli-config.yaml'
         if user_config_path.exists():
             config_path = user_config_path
         else:
             config_path = project_config_path
-        config_status = "(loaded)" if config_path.exists() else "(not found)"
-        
-        api_key_display = '********' + self.api_key[-4:] if self.api_key and len(self.api_key) > 4 else 'Not set!'
-        
-        print()
-        title = "(^_^) Configuration"
-        width = 50
-        pad = width - len(title)
-        print("+" + "-" * width + "+")
-        print("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
-        print("+" + "-" * width + "+")
-        print()
-        print("  -- Model --")
-        print(f"  Model:     {self.model}")
-        print(f"  Base URL:  {self.base_url}")
-        print(f"  API Key:   {api_key_display}")
-        print()
-        print("  -- Terminal --")
-        print(f"  Environment:  {terminal_env}")
+        config_status = "loaded" if config_path.exists() else "not found"
+
+        api_key_display = '********' + self.api_key[-4:] if self.api_key and len(self.api_key) > 4 else 'Not set'
+        ssh_target = None
         if terminal_env == "ssh":
             ssh_host = os.getenv("TERMINAL_SSH_HOST", "not set")
             ssh_user = os.getenv("TERMINAL_SSH_USER", "not set")
             ssh_port = os.getenv("TERMINAL_SSH_PORT", "22")
-            print(f"  SSH Target:   {ssh_user}@{ssh_host}:{ssh_port}")
-        print(f"  Working Dir:  {terminal_cwd}")
-        print(f"  Timeout:      {terminal_timeout}s")
-        print()
-        print("  -- Agent --")
-        print(f"  Max Turns:  {self.max_turns}")
-        print(f"  Toolsets:   {', '.join(self.enabled_toolsets) if self.enabled_toolsets else 'all'}")
-        print(f"  Verbose:    {self.verbose}")
-        print()
-        print("  -- Session --")
-        print(f"  Started:     {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Config File: {config_path} {config_status}")
-        print()
+            ssh_target = f"{ssh_user}@{ssh_host}:{ssh_port}"
+
+        from hermes_cli.branding import get_runtime_branding
+
+        lines = _format_config_dashboard(
+            brand=get_runtime_branding(),
+            model=self.model,
+            base_url=self.base_url,
+            api_key_display=api_key_display,
+            runtime_mode=terminal_env,
+            workspace=terminal_cwd,
+            timeout=f"{terminal_timeout}s",
+            ssh_target=ssh_target,
+            max_turns=str(self.max_turns),
+            toolsets=', '.join(self.enabled_toolsets) if self.enabled_toolsets else 'all',
+            verbose=str(self.verbose),
+            started=self.session_start.strftime('%Y-%m-%d %H:%M:%S'),
+            settings_file=f"{config_path} ({config_status})",
+        )
+        print("\n" + "\n".join(lines) + "\n")
     
     def _list_recent_sessions(self, limit: int = 10) -> list[dict[str, Any]]:
         """Return recent CLI sessions for in-chat browsing/resume affordances."""

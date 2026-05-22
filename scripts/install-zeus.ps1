@@ -47,19 +47,19 @@ $UserStatePaths = @("auth.json", "config.yaml", ".env", "sessions", "memories", 
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor Red
-    Write-Host "│                  ⚡ Zeus Installer                       │" -ForegroundColor Red
-    Write-Host "├─────────────────────────────────────────────────────────┤" -ForegroundColor Red
-    Write-Host "│        A Red Robot Resource Windows AI client.          │" -ForegroundColor Red
-    Write-Host "│        Runs independently from Hermes Agent.            │" -ForegroundColor Red
-    Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor Red
+    Write-Host "===========================================================" -ForegroundColor Red
+    Write-Host "|                  Zeus Installer                            |" -ForegroundColor Red
+    Write-Host "===========================================================" -ForegroundColor Red
+    Write-Host "|        A Red Robot Resource Windows AI client.          |" -ForegroundColor Red
+    Write-Host "|        Runs independently from Hermes Agent.            |" -ForegroundColor Red
+    Write-Host "===========================================================" -ForegroundColor Red
     Write-Host ""
 }
 
-function Write-Info { param([string]$Message) Write-Host "→ $Message" -ForegroundColor Cyan }
-function Write-Success { param([string]$Message) Write-Host "✓ $Message" -ForegroundColor Green }
-function Write-Warn { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
-function Write-Err { param([string]$Message) Write-Host "✗ $Message" -ForegroundColor Red }
+function Write-Info { param([string]$Message) Write-Host "INFO: $Message" -ForegroundColor Cyan }
+function Write-Success { param([string]$Message) Write-Host "OK: $Message" -ForegroundColor Green }
+function Write-Warn { param([string]$Message) Write-Host "WARN: $Message" -ForegroundColor Yellow }
+function Write-Err { param([string]$Message) Write-Host "ERR: $Message" -ForegroundColor Red }
 
 function Start-ZeusInstallLog {
     New-Item -ItemType Directory -Force -Path $ZeusInstallLogDir | Out-Null
